@@ -102,7 +102,7 @@ elif page == "🔐 Admin":
     if not st.session_state.admin_logged_in:
         password = st.text_input("🔑 Mật khẩu", type="password")
         if st.button("ĐĂNG NHẬP", type="primary"):
-            if password == "123456":
+            if password == st.secrets["ADMIN_PASSWORD"]:
                 st.session_state.admin_logged_in = True
                 st.rerun()
             else:
