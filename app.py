@@ -50,6 +50,9 @@ def delete_customer(id: int):
 # ==========================================
 # HÀM TIỆN ÍCH
 # ==========================================
+def small_error(msg: str):
+    st.markdown(f'<p style="color:#cc0000;font-size:13px;margin:-10px 0 5px 0;">⚠️ {msg}</p>', unsafe_allow_html=True)
+
 def validate_phone(phone: str) -> bool:
     pattern = r"^(0|\+84)(3[2-9]|5[6-9]|7[0|6-9]|8[0-9]|9[0-9])[0-9]{7}$"
     return bool(re.match(pattern, phone.strip()))
@@ -95,13 +98,13 @@ if page == "👤 Nhập khách hàng":
     phone   = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567", key=f"phone_{st.session_state.form_key}")
     if st.session_state.submitted:
         if phone.strip() == "":
-            st.error("❌ Vui lòng nhập số điện thoại.")
+            small_error("Vui lòng nhập số điện thoại.")
         elif not validate_phone(phone):
-            st.error("❌ Số điện thoại không đúng định dạng (VD: 0901234567).")
+            small_error("Số điện thoại không đúng định dạng (VD: 0901234567).")
 
     name    = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng", key=f"name_{st.session_state.form_key}")
     if st.session_state.submitted and name.strip() == "":
-        st.error("❌ Vui lòng nhập tên khách hàng.")
+        small_error("Vui lòng nhập tên khách hàng.")
 
     address = st.text_input("📍 Địa chỉ", placeholder="Nhập địa chỉ", key=f"addr_{st.session_state.form_key}")
     loai    = st.selectbox("🏷️ Phân loại khách hàng", ["Thường", "Tiềm năng", "VIP"], key=f"loai_{st.session_state.form_key}")
