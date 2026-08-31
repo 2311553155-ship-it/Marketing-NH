@@ -1,36 +1,63 @@
 import streamlit as st
 import pandas as pd
 import re
+import plotly.express as px
 from io import BytesIO
 from pathlib import Path
+from supabase import create_client, Client
 
+# ==========================================
+# CẤU HÌNH
+# ==========================================
 st.set_page_config(
     page_title="Quản lý khách hàng",
     page_icon="👤",
     layout="wide"
 )
 
-logo_path = Path("Logo.jpg")
-if logo_path.exists():
+# LOGO
+if Path("Logo.jpg").exists():
     st.sidebar.image("Logo.jpg", use_container_width=True)
 
-if "customers" not in st.session_state:
-    st.session_state.customers = []
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
-if "edit_index" not in st.session_state:
-    st.session_state.edit_index = None
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
-if "form_key" not in st.session_state:
-    st.session_state.form_key = 0
+# ==========================================
+# KẾT NỐI SUPABASE
+# ==========================================
+@st.cache_resource
+def get_supabase() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
 
+supabase = get_supabase()
+
+# ==========================================
+# HÀM THAO TÁC DATABASE
+# ==========================================
+def load_customers():
+    res = supabase.table("customers").select("*").order("created_at", desc=False).execute()
+    return res.data or []
+
+def add_customer(data: dict):
+    supabase.table("customers").insert(data).execute()
+
+def update_customer(id: int, data: dict):
+    supabase.table("customers").update(data).eq("id", id).execute()
+
+def delete_customer(id: int):
+    supabase.table("customers").delete().eq("id", id).execute()
+
+# ==========================================
+# HÀM TIỆN ÍCH
+# ==========================================
 def validate_phone(phone: str) -> bool:
     pattern = r"^(0|\+84)(3[2-9]|5[6-9]|7[0|6-9]|8[0-9]|9[0-9])[0-9]{7}$"
     return bool(re.match(pattern, phone.strip()))
 
-def export_excel() -> bytes:
-    df = pd.DataFrame(st.session_state.customers)
+def export_excel(data) -> bytes:
+    df = pd.DataFrame(data)
+    if "id" in df.columns: df.drop(columns=["id","created_at"], inplace=True, errors="ignore")
+    df.columns = ["Số điện thoại","Tên khách hàng","Địa chỉ","Phân loại","Ghi chú"] if len(df.columns)==5 else df.columns
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Khách hàng")
@@ -39,6 +66,21 @@ def export_excel() -> bytes:
 def get_loai_label(loai: str) -> str:
     return {"VIP": "⭐ VIP", "Thường": "👤 Thường", "Tiềm năng": "🌱 Tiềm năng"}.get(loai, loai)
 
+# ==========================================
+# SESSION STATE
+# ==========================================
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+if "edit_id" not in st.session_state:
+    st.session_state.edit_id = None
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
+
+# ==========================================
+# MENU
+# ==========================================
 st.sidebar.title("📋 MENU")
 page = st.sidebar.radio("Chọn trang", ["👤 Nhập khách hàng", "🔐 Admin"])
 
@@ -50,18 +92,14 @@ if page == "👤 Nhập khách hàng":
     st.write("Vui lòng nhập thông tin khách hàng.")
     st.divider()
 
-    phone = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567", key=f"phone_{st.session_state.form_key}")
-    # Lỗi ngay dưới ô SĐT
+    phone   = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567", key=f"phone_{st.session_state.form_key}")
     if st.session_state.submitted:
         if phone.strip() == "":
             st.error("❌ Vui lòng nhập số điện thoại.")
         elif not validate_phone(phone):
             st.error("❌ Số điện thoại không đúng định dạng (VD: 0901234567).")
-        elif phone.strip() in [c["Số điện thoại"] for c in st.session_state.customers]:
-            st.warning("⚠️ Số điện thoại này đã tồn tại.")
 
-    name = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng", key=f"name_{st.session_state.form_key}")
-    # Lỗi ngay dưới ô Tên
+    name    = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng", key=f"name_{st.session_state.form_key}")
     if st.session_state.submitted and name.strip() == "":
         st.error("❌ Vui lòng nhập tên khách hàng.")
 
@@ -72,19 +110,25 @@ if page == "👤 Nhập khách hàng":
 
     if st.button("💾 LƯU THÔNG TIN", type="primary", use_container_width=True):
         st.session_state.submitted = True
-        phone_ok = phone.strip() != "" and validate_phone(phone) and phone.strip() not in [c["Số điện thoại"] for c in st.session_state.customers]
+        phone_ok = phone.strip() != "" and validate_phone(phone)
         name_ok  = name.strip() != ""
         if phone_ok and name_ok:
-            st.session_state.customers.append({
-                "Số điện thoại": phone.strip(),
-                "Tên khách hàng": name.strip(),
-                "Địa chỉ": address.strip(),
-                "Phân loại": loai,
-                "Ghi chú": note.strip()
-            })
-            st.session_state.submitted = False
-            st.session_state.save_success = True
-            st.session_state.form_key += 1
+            try:
+                add_customer({
+                    "so_dien_thoai": phone.strip(),
+                    "ten_khach_hang": name.strip(),
+                    "dia_chi": address.strip(),
+                    "phan_loai": loai,
+                    "ghi_chu": note.strip()
+                })
+                st.session_state.submitted = False
+                st.session_state.save_success = True
+                st.session_state.form_key += 1
+            except Exception as e:
+                if "unique" in str(e).lower():
+                    st.error("❌ Số điện thoại này đã tồn tại.")
+                else:
+                    st.error(f"❌ Lỗi: {e}")
         st.rerun()
 
     if st.session_state.get("save_success"):
@@ -116,24 +160,37 @@ elif page == "🔐 Admin":
                 st.rerun()
         st.divider()
 
-        if len(st.session_state.customers) == 0:
+        customers = load_customers()
+
+        if len(customers) == 0:
             st.info("📭 Chưa có khách hàng nào.")
         else:
-            df = pd.DataFrame(st.session_state.customers)
+            df = pd.DataFrame(customers)
 
+            # THỐNG KÊ
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("👥 Tổng khách hàng", len(df))
-            c2.metric("⭐ VIP", len(df[df["Phân loại"] == "VIP"]))
-            c3.metric("🌱 Tiềm năng", len(df[df["Phân loại"] == "Tiềm năng"]))
-            c4.metric("👤 Thường", len(df[df["Phân loại"] == "Thường"]))
+            c2.metric("⭐ VIP", len(df[df["phan_loai"] == "VIP"]))
+            c3.metric("🌱 Tiềm năng", len(df[df["phan_loai"] == "Tiềm năng"]))
+            c4.metric("👤 Thường", len(df[df["phan_loai"] == "Thường"]))
             st.divider()
 
+            # BIỂU ĐỒ
             with st.expander("📈 Biểu đồ thống kê", expanded=True):
-                chart_df = df["Phân loại"].value_counts().reset_index()
+                chart_df = df["phan_loai"].value_counts().reset_index()
                 chart_df.columns = ["Phân loại", "Số lượng"]
-                st.bar_chart(chart_df.set_index("Phân loại"))
+                color_map = {"VIP": "#FFD700", "Tiềm năng": "#4CAF50", "Thường": "#2196F3"}
+                fig = px.bar(chart_df, x="Phân loại", y="Số lượng",
+                             color="Phân loại", color_discrete_map=color_map,
+                             text="Số lượng", title="Phân bố khách hàng theo loại")
+                fig.update_traces(textposition="outside", textfont_size=16)
+                fig.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
+                                  yaxis=dict(showgrid=True, gridcolor="#eee", title="Số khách hàng"),
+                                  xaxis=dict(title=""), height=350)
+                st.plotly_chart(fig, use_container_width=True)
             st.divider()
 
+            # TÌM KIẾM & LỌC
             st.subheader("🔍 Tìm kiếm & Lọc")
             s1, s2 = st.columns([3, 1])
             with s1:
@@ -144,68 +201,69 @@ elif page == "🔐 Admin":
             filtered = df.copy()
             if search.strip():
                 mask = (
-                    filtered["Tên khách hàng"].str.contains(search, case=False, na=False) |
-                    filtered["Số điện thoại"].str.contains(search, case=False, na=False)
+                    filtered["ten_khach_hang"].str.contains(search, case=False, na=False) |
+                    filtered["so_dien_thoai"].str.contains(search, case=False, na=False)
                 )
                 filtered = filtered[mask]
             if filter_loai != "Tất cả":
-                filtered = filtered[filtered["Phân loại"] == filter_loai]
+                filtered = filtered[filtered["phan_loai"] == filter_loai]
 
             st.caption(f"Hiển thị {len(filtered)} / {len(df)} khách hàng")
             st.divider()
 
+            # DANH SÁCH
             st.subheader("📋 Danh sách khách hàng")
             if len(filtered) == 0:
                 st.info("Không tìm thấy khách hàng phù hợp.")
             else:
-                for i, row in filtered.iterrows():
+                for _, row in filtered.iterrows():
                     with st.expander(
-                        f"{get_loai_label(row['Phân loại'])}  |  {row['Tên khách hàng']}  —  {row['Số điện thoại']}"
+                        f"{get_loai_label(row['phan_loai'])}  |  {row['ten_khach_hang']}  —  {row['so_dien_thoai']}"
                     ):
-                        if st.session_state.edit_index == i:
-                            new_phone = st.text_input("📱 Số điện thoại", value=row["Số điện thoại"], key=f"p{i}")
-                            new_name  = st.text_input("👤 Tên", value=row["Tên khách hàng"], key=f"n{i}")
-                            new_addr  = st.text_input("📍 Địa chỉ", value=row["Địa chỉ"], key=f"a{i}")
+                        if st.session_state.edit_id == row["id"]:
+                            new_phone = st.text_input("📱 Số điện thoại", value=row["so_dien_thoai"], key=f"p{row['id']}")
+                            new_name  = st.text_input("👤 Tên", value=row["ten_khach_hang"], key=f"n{row['id']}")
+                            new_addr  = st.text_input("📍 Địa chỉ", value=row["dia_chi"] or "", key=f"a{row['id']}")
                             new_loai  = st.selectbox("🏷️ Loại", ["Thường","Tiềm năng","VIP"],
-                                                     index=["Thường","Tiềm năng","VIP"].index(row["Phân loại"]),
-                                                     key=f"l{i}")
-                            new_note  = st.text_area("📝 Ghi chú", value=row["Ghi chú"], key=f"note{i}")
+                                                     index=["Thường","Tiềm năng","VIP"].index(row["phan_loai"]),
+                                                     key=f"l{row['id']}")
+                            new_note  = st.text_area("📝 Ghi chú", value=row["ghi_chu"] or "", key=f"note{row['id']}")
                             b1, b2 = st.columns(2)
                             with b1:
-                                if st.button("✅ Lưu", key=f"save{i}", type="primary"):
+                                if st.button("✅ Lưu", key=f"save{row['id']}", type="primary"):
                                     if not validate_phone(new_phone):
                                         st.error("❌ Số điện thoại không đúng định dạng.")
                                     elif new_name.strip() == "":
                                         st.error("❌ Vui lòng nhập tên.")
                                     else:
-                                        st.session_state.customers[i] = {
-                                            "Số điện thoại": new_phone.strip(),
-                                            "Tên khách hàng": new_name.strip(),
-                                            "Địa chỉ": new_addr.strip(),
-                                            "Phân loại": new_loai,
-                                            "Ghi chú": new_note.strip()
-                                        }
-                                        st.session_state.edit_index = None
+                                        update_customer(row["id"], {
+                                            "so_dien_thoai": new_phone.strip(),
+                                            "ten_khach_hang": new_name.strip(),
+                                            "dia_chi": new_addr.strip(),
+                                            "phan_loai": new_loai,
+                                            "ghi_chu": new_note.strip()
+                                        })
+                                        st.session_state.edit_id = None
                                         st.rerun()
                             with b2:
-                                if st.button("❌ Hủy", key=f"cancel{i}"):
-                                    st.session_state.edit_index = None
+                                if st.button("❌ Hủy", key=f"cancel{row['id']}"):
+                                    st.session_state.edit_id = None
                                     st.rerun()
                         else:
-                            st.write(f"📍 **Địa chỉ:** {row['Địa chỉ'] or '—'}")
-                            st.write(f"📝 **Ghi chú:** {row['Ghi chú'] or '—'}")
+                            st.write(f"📍 **Địa chỉ:** {row['dia_chi'] or '—'}")
+                            st.write(f"📝 **Ghi chú:** {row['ghi_chu'] or '—'}")
                             b1, b2 = st.columns(2)
                             with b1:
-                                if st.button("✏️ Chỉnh sửa", key=f"edit{i}"):
-                                    st.session_state.edit_index = i
+                                if st.button("✏️ Chỉnh sửa", key=f"edit{row['id']}"):
+                                    st.session_state.edit_id = row["id"]
                                     st.rerun()
                             with b2:
-                                if st.button("🗑️ Xóa", key=f"del{i}"):
-                                    st.session_state.customers.pop(i)
+                                if st.button("🗑️ Xóa", key=f"del{row['id']}"):
+                                    delete_customer(row["id"])
                                     st.rerun()
 
             st.divider()
-            excel_file = export_excel()
+            excel_file = export_excel(customers)
             st.download_button(
                 label="📥 XUẤT FILE EXCEL",
                 data=excel_file,
