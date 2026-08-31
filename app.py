@@ -22,6 +22,8 @@ if "edit_index" not in st.session_state:
     st.session_state.edit_index = None
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
 
 def validate_phone(phone: str) -> bool:
     pattern = r"^(0|\+84)(3[2-9]|5[6-9]|7[0|6-9]|8[0-9]|9[0-9])[0-9]{7}$"
@@ -48,7 +50,7 @@ if page == "👤 Nhập khách hàng":
     st.write("Vui lòng nhập thông tin khách hàng.")
     st.divider()
 
-    phone = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567")
+    phone = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567", key=f"phone_{st.session_state.form_key}")
     # Lỗi ngay dưới ô SĐT
     if st.session_state.submitted:
         if phone.strip() == "":
@@ -58,14 +60,14 @@ if page == "👤 Nhập khách hàng":
         elif phone.strip() in [c["Số điện thoại"] for c in st.session_state.customers]:
             st.warning("⚠️ Số điện thoại này đã tồn tại.")
 
-    name = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng")
+    name = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng", key=f"name_{st.session_state.form_key}")
     # Lỗi ngay dưới ô Tên
     if st.session_state.submitted and name.strip() == "":
         st.error("❌ Vui lòng nhập tên khách hàng.")
 
-    address = st.text_input("📍 Địa chỉ", placeholder="Nhập địa chỉ")
-    loai    = st.selectbox("🏷️ Phân loại khách hàng", ["Thường", "Tiềm năng", "VIP"])
-    note    = st.text_area("📝 Ghi chú", placeholder="Nhập ghi chú")
+    address = st.text_input("📍 Địa chỉ", placeholder="Nhập địa chỉ", key=f"addr_{st.session_state.form_key}")
+    loai    = st.selectbox("🏷️ Phân loại khách hàng", ["Thường", "Tiềm năng", "VIP"], key=f"loai_{st.session_state.form_key}")
+    note    = st.text_area("📝 Ghi chú", placeholder="Nhập ghi chú", key=f"note_{st.session_state.form_key}")
     st.divider()
 
     if st.button("💾 LƯU THÔNG TIN", type="primary", use_container_width=True):
@@ -82,6 +84,7 @@ if page == "👤 Nhập khách hàng":
             })
             st.session_state.submitted = False
             st.session_state.save_success = True
+            st.session_state.form_key += 1
         st.rerun()
 
     if st.session_state.get("save_success"):
