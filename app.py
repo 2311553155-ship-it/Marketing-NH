@@ -80,9 +80,13 @@ if page == "👤 Nhập khách hàng":
                 "Phân loại": loai,
                 "Ghi chú": note.strip()
             })
-            st.success("✅ Đã lưu thông tin khách hàng!")
             st.session_state.submitted = False
+            st.session_state.save_success = True
         st.rerun()
+
+    if st.session_state.get("save_success"):
+        st.success("✅ Đã lưu thông tin khách hàng thành công!")
+        st.session_state.save_success = False
 
 # ==========================================
 # TRANG ADMIN
