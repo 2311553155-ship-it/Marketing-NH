@@ -35,7 +35,7 @@ supabase = get_supabase()
 # HÀM THAO TÁC DATABASE
 # ==========================================
 def load_customers():
-    res = supabase.table("customers").select("*").order("created_at", desc=False).execute()
+    res = supabase.table("customers").select("*").order("created_at").execute()
     return res.data or []
 
 def add_customer(data: dict):
