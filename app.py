@@ -4,35 +4,25 @@ import re
 from io import BytesIO
 from pathlib import Path
 
-# ==========================================
-# CẤU HÌNH
-# ==========================================
 st.set_page_config(
     page_title="Quản lý khách hàng",
     page_icon="👤",
     layout="wide"
 )
 
-# ==========================================
-# LOGO
-# ==========================================
 logo_path = Path("Logo.jpg")
 if logo_path.exists():
     st.sidebar.image("Logo.jpg", use_container_width=True)
 
-# ==========================================
-# KHỞI TẠO SESSION STATE
-# ==========================================
 if "customers" not in st.session_state:
     st.session_state.customers = []
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 if "edit_index" not in st.session_state:
     st.session_state.edit_index = None
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
 
-# ==========================================
-# HÀM TIỆN ÍCH
-# ==========================================
 def validate_phone(phone: str) -> bool:
     pattern = r"^(0|\+84)(3[2-9]|5[6-9]|7[0|6-9]|8[0-9]|9[0-9])[0-9]{7}$"
     return bool(re.match(pattern, phone.strip()))
@@ -47,14 +37,8 @@ def export_excel() -> bytes:
 def get_loai_label(loai: str) -> str:
     return {"VIP": "⭐ VIP", "Thường": "👤 Thường", "Tiềm năng": "🌱 Tiềm năng"}.get(loai, loai)
 
-# ==========================================
-# MENU
-# ==========================================
 st.sidebar.title("📋 MENU")
-page = st.sidebar.radio(
-    "Chọn trang",
-    ["👤 Nhập khách hàng", "🔐 Admin"]
-)
+page = st.sidebar.radio("Chọn trang", ["👤 Nhập khách hàng", "🔐 Admin"])
 
 # ==========================================
 # TRANG NHẬP KHÁCH HÀNG
@@ -64,33 +48,41 @@ if page == "👤 Nhập khách hàng":
     st.write("Vui lòng nhập thông tin khách hàng.")
     st.divider()
 
-    phone   = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567")
-    name    = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng")
+    phone = st.text_input("📱 Số điện thoại *", placeholder="VD: 0901234567")
+    # Lỗi ngay dưới ô SĐT
+    if st.session_state.submitted:
+        if phone.strip() == "":
+            st.error("❌ Vui lòng nhập số điện thoại.")
+        elif not validate_phone(phone):
+            st.error("❌ Số điện thoại không đúng định dạng (VD: 0901234567).")
+        elif phone.strip() in [c["Số điện thoại"] for c in st.session_state.customers]:
+            st.warning("⚠️ Số điện thoại này đã tồn tại.")
+
+    name = st.text_input("👤 Tên khách hàng *", placeholder="Nhập tên khách hàng")
+    # Lỗi ngay dưới ô Tên
+    if st.session_state.submitted and name.strip() == "":
+        st.error("❌ Vui lòng nhập tên khách hàng.")
+
     address = st.text_input("📍 Địa chỉ", placeholder="Nhập địa chỉ")
     loai    = st.selectbox("🏷️ Phân loại khách hàng", ["Thường", "Tiềm năng", "VIP"])
     note    = st.text_area("📝 Ghi chú", placeholder="Nhập ghi chú")
     st.divider()
 
     if st.button("💾 LƯU THÔNG TIN", type="primary", use_container_width=True):
-        if phone.strip() == "":
-            st.error("❌ Vui lòng nhập số điện thoại.")
-        elif not validate_phone(phone):
-            st.error("❌ Số điện thoại không đúng định dạng Việt Nam (VD: 0901234567).")
-        elif name.strip() == "":
-            st.error("❌ Vui lòng nhập tên khách hàng.")
-        else:
-            existing_phones = [c["Số điện thoại"] for c in st.session_state.customers]
-            if phone.strip() in existing_phones:
-                st.warning("⚠️ Số điện thoại này đã tồn tại trong danh sách.")
-            else:
-                st.session_state.customers.append({
-                    "Số điện thoại": phone.strip(),
-                    "Tên khách hàng": name.strip(),
-                    "Địa chỉ": address.strip(),
-                    "Phân loại": loai,
-                    "Ghi chú": note.strip()
-                })
-                st.success("✅ Đã lưu thông tin khách hàng!")
+        st.session_state.submitted = True
+        phone_ok = phone.strip() != "" and validate_phone(phone) and phone.strip() not in [c["Số điện thoại"] for c in st.session_state.customers]
+        name_ok  = name.strip() != ""
+        if phone_ok and name_ok:
+            st.session_state.customers.append({
+                "Số điện thoại": phone.strip(),
+                "Tên khách hàng": name.strip(),
+                "Địa chỉ": address.strip(),
+                "Phân loại": loai,
+                "Ghi chú": note.strip()
+            })
+            st.success("✅ Đã lưu thông tin khách hàng!")
+            st.session_state.submitted = False
+        st.rerun()
 
 # ==========================================
 # TRANG ADMIN
@@ -122,7 +114,6 @@ elif page == "🔐 Admin":
         else:
             df = pd.DataFrame(st.session_state.customers)
 
-            # THỐNG KÊ
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("👥 Tổng khách hàng", len(df))
             c2.metric("⭐ VIP", len(df[df["Phân loại"] == "VIP"]))
@@ -130,14 +121,12 @@ elif page == "🔐 Admin":
             c4.metric("👤 Thường", len(df[df["Phân loại"] == "Thường"]))
             st.divider()
 
-            # BIỂU ĐỒ
             with st.expander("📈 Biểu đồ thống kê", expanded=True):
                 chart_df = df["Phân loại"].value_counts().reset_index()
                 chart_df.columns = ["Phân loại", "Số lượng"]
                 st.bar_chart(chart_df.set_index("Phân loại"))
             st.divider()
 
-            # TÌM KIẾM & LỌC
             st.subheader("🔍 Tìm kiếm & Lọc")
             s1, s2 = st.columns([3, 1])
             with s1:
@@ -158,7 +147,6 @@ elif page == "🔐 Admin":
             st.caption(f"Hiển thị {len(filtered)} / {len(df)} khách hàng")
             st.divider()
 
-            # DANH SÁCH + CHỈNH SỬA / XÓA
             st.subheader("📋 Danh sách khách hàng")
             if len(filtered) == 0:
                 st.info("Không tìm thấy khách hàng phù hợp.")
@@ -210,8 +198,6 @@ elif page == "🔐 Admin":
                                     st.rerun()
 
             st.divider()
-
-            # XUẤT EXCEL
             excel_file = export_excel()
             st.download_button(
                 label="📥 XUẤT FILE EXCEL",
